@@ -1,0 +1,10 @@
+torch>=2.1.0
+transformers>=4.37.0
+accelerate
+streamlit
+faiss-gpu
+Pillow
+pandas
+tqdm
+qwen-vl-utils
+vllm>=0.3.0
