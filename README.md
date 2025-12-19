@@ -30,10 +30,10 @@ Pipeline overview: **Query Rewrite → Dual-Index Retrieval → Chunked Rerank �
 
 ## 🎬 Demo
 
-> Place your demo GIF at: `assets/demo.gif`
+
 
 <p align="center">
-  <img src="assets/demo.gif" width="900" alt="DualSight-RAG demo"/>
+  <img src="assets/demo3.gif" width="900" alt="DualSight-RAG demo"/>
 </p>
 
 ---
@@ -66,25 +66,11 @@ Retrieval/rerank and generation can be decoupled for scalable serving.
 
 ## 🛠️ Architecture
 
-```mermaid
-flowchart LR
-  U[Image + Question] --> QR[Query Rewrite]
-  QR --> QE[SigLIP Text Encoder]
-
-  QE --> VI[Visual Index: FAISS image emb]
-  QE --> TI[Semantic Index: FAISS text emb]
-
-  VI --> C[Top-N Candidates]
-  TI --> C
-
-  C --> CH[Chunking: sliding window]
-  CH --> RR[bge-reranker-v2-m3]
-  RR --> AGG[Aggregate: max pool]
-  AGG --> TOPK[Top-5 Evidence]
-
-  TOPK --> GEN[Qwen2.5-VL-32 via vLLM TP=2]
-  GEN --> A[Final Response]
-```
+<p align="center">
+  <a href="assets/Architecture.jpg">
+    <img src="assets/Architecture.jpg" width="900" alt="DualSight-RAG architecture"/>
+  </a>
+</p>
 
 ---
 
@@ -153,14 +139,15 @@ streamlit run web_ui/app.py
 Results on a vertical-domain dataset (complex charts/tables/text).  
 **All numbers are consistent with the resume version of this project.**
 
-| Metric | Result | Setting / Note |
-|---|---:|---|
-| Recall@5 | **42.33% → 85.9%** | Dual-index retrieval + chunked aggregation rerank |
-| MRR@50 | **+0.16** | Improvement vs. baseline pipeline |
-| End-to-end F1 | **+0.14** | Improvement vs. baseline, with vLLM (TP=2) deployment |
-| Evidence for generation | **Top-5** | Selected after reranking + aggregation |
+| Category | Metric | Result | What it reflects |
+|---|---|---:|---|
+| Retrieval quality | Recall@5 | **42.33% → 85.9%** | Dual-index retrieval + chunked aggregation rerank |
+| Ranking quality | MRR@50 | **+0.16** | Improvement vs. baseline pipeline |
+| End-to-end | F1 | **+0.14** | Improvement vs. baseline with vLLM (TP=2) deployment |
+| Context | Evidence size | **Top-5** | Final context selected after reranking + aggregation |
 
-> Note: Exact dataset details and baseline configuration can be provided in `scripts/evaluate.py` (sanitized if needed).
+> Note: Exact dataset details and baseline configuration can be provided in `scripts/eval.py` (sanitized if needed).
+
 
 ---
 
@@ -196,20 +183,6 @@ To keep metrics aligned with the resume:
 
 ---
 
-## 🧪 Ablation Study
-
-Ablations validate the contribution of each component under the same evaluation protocol.  
-**Final numbers below follow the resume-consistent reporting.**
-
-| Variant | Query Rewrite | Dual-Index Retrieval | Chunked Agg. Rerank | Recall@5 | MRR@50 (Δ vs baseline) | End-to-end F1 (Δ vs baseline) |
-|---|---:|---:|---:|---:|---:|---:|
-| Baseline (resume) | ✗ | ✗ (single-path) | ✗ | 42.33% | 0.00 | 0.00 |
-| w/o Query Rewrite | ✗ | ✓ | ✓ | TBD | TBD | TBD |
-| w/o Dual-Index (single-path) | ✓ | ✗ | ✓ | TBD | TBD | TBD |
-| w/o Chunk Aggregation (truncate / no agg) | ✓ | ✓ | ✗ | TBD | TBD | TBD |
-| **DualSight-RAG (full)** | ✓ | ✓ | ✓ | **85.9%** | **+0.16** | **+0.14** |
-
----
 
 ## 📝 To-Do
 - [x] Dual-index retrieval (SigLIP)
