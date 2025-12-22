@@ -33,7 +33,7 @@ Pipeline overview: **Query Rewrite → Dual-Index Retrieval → Chunked Rerank �
 
 
 <p align="center">
-  <img src="assets/demo3.gif" width="900" alt="DualSight-RAG demo"/>
+  <img src="assets/demo.gif" width="900" alt="DualSight-RAG demo"/>
 </p>
 
 ---
