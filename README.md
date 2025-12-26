@@ -62,21 +62,18 @@ To mitigate **lost-in-the-middle** behavior and better cover long documents:
 
 **Default aggregation (peak + coverage):**
 
-\[
-s(d)=\max_{i \in \mathcal{F}(d)} s_i \;+\; \frac{1}{K}\sum_{i \in \text{TopK}(\mathcal{F}(d))} s_i
-\]
+`score(d) = max_{i in F(d)} s_i + (1/K) * sum_{i in TopK(F(d))} s_i`
 
-- \( \mathcal{F}(d) \): retrieved fragments belonging to document \(d\)  
-- \( s_i \): similarity score for fragment \(i\)  
-- `TopK`: top-K fragments within the same document
+- `F(d)`: retrieved fragments belonging to document `d`
+- `s_i`: similarity score for fragment `i`
+- `TopK(F(d))`: top-K fragments within the same document
+
 
 ### 3) ⚖️ Weighted Dual-Path Fusion
 
 Final ranking combines **visual** and **text** evidence:
 
-\[
-S(d)=\alpha \cdot S_{\text{visual}}(d) + (1-\alpha)\cdot S_{\text{text}}(d)
-\]
+`S(d) = α * S_visual(d) + (1 - α) * S_text(d)`
 
 This helps retrieve chart-heavy pages even when OCR/text is noisy, and vice versa.
 
