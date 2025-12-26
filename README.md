@@ -8,9 +8,10 @@
 ![SigLIP](https://img.shields.io/badge/Retrieval-SigLIP-6f42c1)
 ![License](https://img.shields.io/badge/License-Apache--2.0-orange)
 
-**Unified-space Multimodal RAG with Dual-Index Retrieval and Chunked Aggregation Reranking.**
+**Full-Stack SigLIP Multimodal RAG with Fragment-First Retrieval & Score Aggregation.**
 
-[Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Performance](#-performance) • [License](#-license)
+[Key Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Performance](#-performance) • [Project Structure](#-project-structure) • [License](#-license)
+
 
 </div>
 
@@ -18,13 +19,16 @@
 
 ## 📖 Introduction
 
-**DualSight-RAG** is a multimodal Retrieval-Augmented Generation (RAG) system for complex document understanding (e.g., charts, tables, and dense text).  
-It addresses two common failure modes in multimodal RAG:
+**DualSight-RAG** is a high-performance **multimodal RAG** system designed for dense, detail-sensitive retrieval (e.g., charts, technical docs, long reports).
 
-- **Query ambiguity**: rewrite user queries to reduce ambiguity before retrieval.
-- **Long-document matching**: chunk candidates and aggregate reranking scores to mitigate truncation effects.
+Instead of indexing whole documents, DualSight adopts a **Fragment-First** strategy:
 
-Pipeline overview: **Query Rewrite → Dual-Index Retrieval → Chunked Rerank → Top-K Evidence → VLM Generation**.
+- **Index fragments (chunks)** rather than entire documents
+- Retrieve **Top-N fragments**, then **aggregate** them into document-level scores
+- Use **SigLIP** as a *unified encoder* for both **text** and **image**, avoiding heavy cross-encoder rerankers while maintaining strong recall
+
+**Pipeline**  
+**Query → Fragment Retrieval (Top-N) → Group-by DocID → Score Aggregation → Dual-Path Fusion → Multimodal LLM Generation**
 
 ---
 
@@ -40,28 +44,50 @@ Pipeline overview: **Query Rewrite → Dual-Index Retrieval → Chunked Rerank �
 
 ## 🚀 Key Features
 
-### 1) 🌌 Dual-Index Retrieval in a Unified Alignment Space (SigLIP)
-We build two indices in the **same SigLIP embedding space**:
+### 1) ⚡ Unified SigLIP Retrieval (Text + Image)
 
-- **Text→Image path**: encode raw images into SigLIP image embeddings for visual/layout retrieval.
-- **Text→Text path**: encode textual evidence (e.g., extracted descriptions) into SigLIP text embeddings for semantic retrieval.
+A single encoder handles both modalities:
 
-This enables **Text-to-Image** and **Text-to-Text** retrieval without switching embedding models.
+- **Visual path:** text-to-image retrieval in a shared embedding space  
+- **Text path:** text-to-text fragment retrieval via dense similarity  
+- **Unified space:** no projection / adapter layers required
 
-### 2) 🧩 Chunked Aggregation Reranking (bge-reranker-v2-m3)
-To handle long candidates, we implement **chunk scoring + aggregation**:
+### 2) 🧩 Fragment-First Retrieval + Aggregation
 
-- Split long candidate text into overlapping chunks.
-- Score each chunk with **bge-reranker-v2-m3**.
-- Aggregate chunk scores (e.g., max-pooling) to produce the final relevance score.
-- Select **Top-5 evidence** as the generation context.
+To mitigate **lost-in-the-middle** behavior and better cover long documents:
 
-> This strategy improved **Recall@5 from 42.33% to 85.9%** on a vertical-domain dataset (vs. baseline pipeline).
+- **Ingestion:** slice long text into overlapping **fragments** before indexing
+- **Retrieval:** retrieve **Top-N fragments** (instead of Top-K documents)
+- **Aggregation:** group fragments by `doc_id` and compute a document score
 
-### 3) ⚡ High-Throughput VLM Serving (vLLM, TP=2)
-We deploy **Qwen2.5-VL-32** with **vLLM** using **Tensor Parallelism (TP=2)**.  
-Retrieval/rerank and generation can be decoupled for scalable serving.
+**Default aggregation (peak + coverage):**
 
+\[
+s(d)=\max_{i \in \mathcal{F}(d)} s_i \;+\; \frac{1}{K}\sum_{i \in \text{TopK}(\mathcal{F}(d))} s_i
+\]
+
+- \( \mathcal{F}(d) \): retrieved fragments belonging to document \(d\)  
+- \( s_i \): similarity score for fragment \(i\)  
+- `TopK`: top-K fragments within the same document
+
+### 3) ⚖️ Weighted Dual-Path Fusion
+
+Final ranking combines **visual** and **text** evidence:
+
+\[
+S(d)=\alpha \cdot S_{\text{visual}}(d) + (1-\alpha)\cdot S_{\text{text}}(d)
+\]
+
+This helps retrieve chart-heavy pages even when OCR/text is noisy, and vice versa.
+
+### 4) 🚀 Hardware-Isolated Inference (Optional)
+
+Recommended deployment for stable throughput:
+
+- **GPU 0:** SigLIP (embedding + retrieval)
+- **GPU 1–2:** vLLM multimodal generation (tensor parallel)
+
+This prevents retrieval latency from blocking generation.
 ---
 
 ## 🛠️ Architecture
@@ -78,18 +104,17 @@ Retrieval/rerank and generation can be decoupled for scalable serving.
 
 ```text
 DualSight-RAG/
-├── assets/                 # Demo images, diagrams, and demo GIF
-├── configs/                # Configuration files
-│   └── config.py           # Model paths & runtime settings
-├── core/                   # Core engines
-│   ├── retrieval.py        # Dual-index retrieval (SigLIP)
-│   ├── reranker.py         # Chunked aggregation reranking (BGE reranker)
-│   └── llm_engine.py       # vLLM inference wrapper
+├── assets/
+├── configs/
+│   └── config.py           # Model paths and runtime settings
+├── core/
+│   ├── retrieval.py        # Fragment search, group-by, aggregation, fusion
+│   └── llm_engine.py       # vLLM inference wrapper (optional)
 ├── scripts/
-│   ├── ingest.py           # Ingestion: build indices
-│   └── evaluate.py         # Benchmark & evaluation
+│   ├── ingest.py           # Chunking -> SigLIP encoding -> FAISS build
+│   └── evaluate.py         # Recall/MRR evaluation
 ├── web_ui/
-│   └── app.py              # Streamlit demo UI
+│   └── app.py              # Streamlit UI (scores + retrieval breakdown)
 ├── requirements.txt
 └── README.md
 ```
@@ -99,35 +124,43 @@ DualSight-RAG/
 ## 📦 Quick Start
 
 ### 1) Prerequisites
-- Python 3.10+
-- CUDA 12.x recommended
-- NVIDIA GPUs recommended for VLM serving (TP=2 implies **≥2 GPUs** for best performance)
 
-### 2) Installation
+- Python 3.10+
+- GPU recommended (SigLIP + VLM)
+- RAM: 64GB+ recommended for larger FAISS indices
+
+### 2) Install
+
 ```bash
-git clone https://github.com/<YourUsername>/DualSight-RAG.git
-cd DualSight-RAG
 pip install -r requirements.txt
 ```
 
-### 3) Configuration
-Edit `configs/config.py` to point to your local model weights:
+### 3) Configure (`configs/config.py`)
 
 ```python
 MODEL_PATHS = {
-    "qwen": "/path/to/Qwen2.5-VL-32B-Instruct-AWQ",
-    "siglip": "/path/to/siglip-so400m-patch14-384",
-    "reranker": "/path/to/bge-reranker-v2-m3",
+    "vlm":   "/path/to/your_multimodal_llm",
+    "siglip": "/path/to/siglip-so400m-patch14-384"
+}
+
+RETRIEVAL = {
+    "top_n_fragments": 100,
+    "top_k_context": 5,
+    "agg_topk": 5,
+    "alpha_fusion": 0.5
 }
 ```
 
-### 4) Build Indices
-Place your raw data under `raw_data/<dataset_name>/` and run:
+### 4) Build Fragment Index
+
+This generates FAISS indices and the fragment-to-document mapping:
+
 ```bash
-python scripts/ingest.py --dataset <dataset_name>
+python scripts/ingest.py --dataset energy
 ```
 
-### 5) Run the Web UI
+### 5) Run Demo UI
+
 ```bash
 streamlit run web_ui/app.py
 ```
@@ -151,52 +184,24 @@ Results on a vertical-domain dataset (complex charts/tables/text).
 
 ---
 
-## 🔁 Reproducibility
-
-This repository provides a **sanitized and reproducible** pipeline consistent with the resume version of this project.
-
-### Environment
-- Python 3.10+
-- CUDA 12.x recommended
-- Models (configured via `configs/config.py`):
-  - `Qwen2.5-VL-32B-Instruct-AWQ`
-  - `siglip-so400m-patch14-384`
-  - `bge-reranker-v2-m3`
-
-### Evaluation Protocol (Recommended)
-- Build indices with `scripts/ingest.py`
-- Run evaluation with `scripts/evaluate.py`
-- Use **Top-5 evidence** after reranking + aggregation as the generation context
-
-### Baseline Definition (for reported deltas)
-To keep metrics aligned with the resume:
-- **Baseline (single-path + no chunk aggregation rerank)**:
-  - No query rewrite
-  - Single-path retrieval (one index only)
-  - No chunked aggregation reranking (or truncation-limited matching)
-- **DualSight-RAG (full)**:
-  - Query rewrite enabled
-  - Dual-index retrieval (visual + semantic)
-  - Chunked reranking + aggregation
-  - Top-5 evidence for generation context
-  - vLLM serving with TP=2 for Qwen2.5-VL-32
-
----
-
-
 ## 📝 To-Do
-- [x] Dual-index retrieval (SigLIP)
-- [x] Chunked aggregation reranking (bge-reranker-v2-m3)
-- [x] vLLM integration (TP=2)
-- [ ] PDF parsing & layout-aware chunking
-- [ ] Optional web search connector
+
+- [x] Unified SigLIP dual-path retrieval
+- [x] Fragment indexing + group-by aggregation
+- [x] Mathematical score aggregation
+- [ ] Adaptive `alpha` based on query type/length
+- [ ] On-the-fly PDF chunking & indexing
 
 ---
 
-## 🤝 Contribution
-Issues and PRs are welcome. For large changes, please open an issue first to discuss the design.
+## 🤝 Contributing
+
+Issues and PRs are welcome.  
+Please include minimal repro steps and environment info.
 
 ---
 
 ## 📄 License
-This project is licensed under the **Apache 2.0 License**.
+
+Apache-2.0
+
